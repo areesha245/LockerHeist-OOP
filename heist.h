@@ -42,6 +42,238 @@ struct Location {
     bool locSearchFlag;   // true if already searched
 };
 
+// ---------- EXCEPTIONS (Module 7) ----------
+
+// Base exception class for the whole game. Every message starts with HEIST ERROR.
+// Derived classes describe one specific problem each, so main() can catch them by type.
+class GameException {
+protected:
+    string message;
+
+public:
+    GameException(string msg) : message("HEIST ERROR: " + msg) {}
+    virtual ~GameException() {}
+    virtual string what() const { return message; }
+};
+
+// Thrown when a board position is outside the valid range of a word row.
+class InvalidPositionException : public GameException {
+public:
+    InvalidPositionException() : GameException("Invalid board position.") {}
+};
+
+// Thrown when a letter is placed on a slot that already holds a letter.
+class SlotFilledException : public GameException {
+public:
+    SlotFilledException() : GameException("This slot is already filled.") {}
+};
+
+// Thrown when a tile is added to a rack that has no free space.
+class RackFullException : public GameException {
+public:
+    RackFullException() : GameException("The tile rack is full.") {}
+};
+
+// Thrown when a tile is taken from a rack that holds no tiles.
+class RackEmptyException : public GameException {
+public:
+    RackEmptyException() : GameException("The tile rack is empty.") {}
+};
+
+// Thrown when a word is checked before its row is complete, or has a wrong length.
+class InvalidWordException : public GameException {
+public:
+    InvalidWordException(string reason) : GameException(reason) {}
+};
+
+// Thrown by DynamicArray when an index is outside the stored elements.
+class InvalidIndexException : public GameException {
+public:
+    InvalidIndexException() : GameException("Array index out of range.") {}
+};
+
+// Thrown when a text file is missing or its content is corrupted.
+class FileException : public GameException {
+public:
+    FileException(string fileName) : GameException("File not found or corrupted: " + fileName) {}
+};
+
+// Thrown when the detective does not have enough credibility for an interview.
+class LowCredibilityException : public GameException {
+public:
+    LowCredibilityException() : GameException("Not enough credibility for this interview.") {}
+};
+
+// Thrown when the player types something that is not a valid menu choice.
+class InvalidInputException : public GameException {
+public:
+    InvalidInputException() : GameException("Invalid input. Please try again.") {}
+};
+
+// ---------- GENERIC DYNAMIC ARRAY (Module 8) ----------
+
+// A generic (template) array that grows on its own.
+// Templates utilize one piece of code for many types, which improves code reusability.
+// Cottage, Scrabble and TileRack use it instead of raw new/delete arrays.
+template <class T>
+class DynamicArray {
+private:
+    T* data;        // heap memory that holds the elements
+    int capacity;   // how many elements fit before growing
+    int count;      // how many elements are in use
+
+    // Doubles the capacity and copies the old elements into the new block.
+    void grow() {
+        int newCapacity = (capacity == 0) ? 4 : capacity * 2;
+        T* bigger = new T[newCapacity]();
+        for (int i = 0; i < count; i++) bigger[i] = data[i];
+        delete[] data;
+        data = bigger;
+        capacity = newCapacity;
+    }
+
+public:
+    // Allocates memory for the given number of elements; the array starts empty.
+    DynamicArray(int initialCapacity = 4) : data(0), capacity(initialCapacity), count(0) {
+        if (capacity > 0) data = new T[capacity]();
+    }
+
+    // Copy constructor: makes a deep copy so two arrays never share memory.
+    DynamicArray(const DynamicArray<T>& other) : data(0), capacity(other.capacity), count(other.count) {
+        if (capacity > 0) {
+            data = new T[capacity]();
+            for (int i = 0; i < count; i++) data[i] = other.data[i];
+        }
+    }
+
+    // Assignment operator: frees old memory, then deep copies (self-assignment safe).
+    DynamicArray<T>& operator=(const DynamicArray<T>& other) {
+        if (this != &other) {
+            delete[] data;
+            capacity = other.capacity;
+            count = other.count;
+            data = 0;
+            if (capacity > 0) {
+                data = new T[capacity]();
+                for (int i = 0; i < count; i++) data[i] = other.data[i];
+            }
+        }
+        return *this;
+    }
+
+    // Destructor frees the heap memory so there is no leak.
+    ~DynamicArray() { delete[] data; }
+
+    // Adds an element at the end and grows the array if it is full.
+    void add(const T& item) {
+        if (count == capacity) grow();
+        data[count] = item;
+        count++;
+    }
+
+    // Sets the number of used elements to n; new elements get default values.
+    void resizeTo(int n) {
+        while (capacity < n) grow();
+        for (int i = count; i < n; i++) data[i] = T();
+        count = n;
+    }
+
+    // Removes the element at index and shifts later elements one step left.
+    void removeAt(int index) {
+        if (index < 0 || index >= count) throw InvalidIndexException();
+        for (int i = index; i < count - 1; i++) data[i] = data[i + 1];
+        count--;
+    }
+
+    // Bounds-checked access that allows reading and writing.
+    T& operator[](int index) {
+        if (index < 0 || index >= count) throw InvalidIndexException();
+        return data[index];
+    }
+
+    // Bounds-checked access for const objects (read only).
+    const T& operator[](int index) const {
+        if (index < 0 || index >= count) throw InvalidIndexException();
+        return data[index];
+    }
+
+    int getSize() const { return count; }
+    void clear() { count = 0; }
+};
+
+// ---------- TILE RACK (Module 5) ----------
+
+// Holds the letters (and their board positions) that the detective has collected.
+// Responsibility: store collected tiles safely. Uses DynamicArray<Tile> internally.
+class TileRack {
+private:
+    DynamicArray<Tile> tiles;      // collected letters
+    DynamicArray<int> positions;   // board position of each collected letter
+    int maxSize;                   // rack is full when this many tiles are stored
+
+public:
+    TileRack(int maxTiles = 8);
+    TileRack(const TileRack& other);              // deep copy
+    TileRack& operator=(const TileRack& other);   // deep copy assignment
+    ~TileRack();
+
+    void addTile(char letter, int position);
+    void removeTile(int index);
+    int getCount() const;
+    bool isEmpty() const;
+    bool isFull() const;
+    void display() const;
+};
+
+// ---------- SCRABBLE BOARD (Module 4) ----------
+
+// The two-row letter board. Row 1 has 7 slots (Word 1), Row 2 has 8 slots (Word 2).
+// Responsibility: place letters at their positions and check the finished words.
+class Scrabble {
+private:
+    DynamicArray<Tile> rowOne;    // 7 slots for Word 1
+    DynamicArray<Tile> rowTwo;    // 8 slots for Word 2
+    string targetWord1;           // correct Word 1 of the chosen culprit
+    string targetWord2;           // correct Word 2 of the chosen culprit
+
+    int rowLength(WordRow row) const;
+
+public:
+    Scrabble();
+    Scrabble(const Scrabble& other);              // deep copy
+    Scrabble& operator=(const Scrabble& other);   // deep copy assignment
+    ~Scrabble();
+
+    void setTargetWords(string word1, string word2);
+    void placeLetter(const Clue& clue);
+    bool isRowComplete(WordRow row) const;
+    string getWord(WordRow row) const;
+    bool checkWord(WordRow row, string guess) const;
+    void displayBoard() const;
+};
+
+// ---------- COTTAGE (Module 4) ----------
+
+// The cottage has seven locations. Responsibility: store and search locations.
+// Aggregation: the Cottage holds a DynamicArray of Location structs (LocCache).
+class Cottage {
+private:
+    DynamicArray<Location> LocCache;
+
+public:
+    Cottage();
+    Cottage(const Cottage& other);                // deep copy
+    Cottage& operator=(const Cottage& other);     // deep copy assignment
+    ~Cottage();
+
+    void addLocation(const Location& loc);
+    int getLocationCount() const;
+    bool isSearched(int index) const;
+    string getLocationName(int index) const;
+    Clue searchLocation(int index);
+    void displayLocations() const;
+};
+
 // ---------- CHARACTER HIERARCHY ----------
 
 // Abstract base class: holds data common to every person in the game.
@@ -81,12 +313,13 @@ public:
     Clue getClue() const;
 };
 
-// The player. Stores credibility and turn count only (GameEngine increments turns).
+// The player. Stores credibility, turn count and the two racks (GameEngine increments turns).
 class Detective : public Character {
 private:
     int credibility;
     int turns;
-    // TileRack will be added here in Module 5.
+    TileRack rackWord1;   // letters collected for Word 1 (locations)
+    TileRack rackWord2;   // letters collected for Word 2 (characters)
 
 public:
     Detective(string name, string nation = "Malay", int startCredibility = 100);
@@ -95,6 +328,7 @@ public:
     void useTurn();
     int getCredibility() const;
     int getTurns() const;
+    TileRack& getRack(WordRow row);
 };
 
 // Base for all seven suspects. Stores the Word 2 letter data.
