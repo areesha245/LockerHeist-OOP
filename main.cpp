@@ -2,113 +2,111 @@
 #include "heist.h"
 using namespace std;
 
-// Test 1: polymorphism over the Character hierarchy (Module 3 and 9).
-void testCharacters() {
-    cout << "===== TEST 1: Characters =====" << endl;
-    Character* people[8];
-    people[0] = new Victim("Mr.Leonardo", "French", 'S', 1);
-    people[1] = new Detective("Agent_Halim");
-    people[2] = new Cook("Mr.Enzo", "Italian", 'P', 2);
-    people[3] = new Guard("Mr.Lukas", "German", 'A', 3);
-    people[4] = new Servant("Mr.Toby", "British", 'G', 4);
-    people[5] = new OwnersChild("Ms.Celine", "French", 'H', 5);
-    people[6] = new Partner("Ms.Ruslana", "Partner_1", "Ukrainian", 'E', 6);
-    people[7] = new PA("Mr.Jad", "Egyptian", 'I', 8);
-
-    for (int i = 0; i < 8; i++) {
-        people[i]->display();
-        cout << "  Required credibility: " << people[i]->getRequiredCredibility() << endl;
-    }
-    for (int i = 0; i < 8; i++) delete people[i];
+// Test 1: files and rules (Module 2 and 6).
+void testFilesAndRules() {
+    cout << "===== TEST 1: Rules and About files =====" << endl;
+    GameEngine& engine = GameEngine::getInstance();
+    engine.loadRules();
+    engine.showRules();
+    cout << endl;
+    engine.showAbout();
 }
 
-// Test 2: Cottage, Scrabble and TileRack working together (Module 4, 5, 8).
-void testBoardAndRack() {
-    cout << endl << "===== TEST 2: Cottage, Scrabble, TileRack =====" << endl;
+// Test 2: all seven culprit profiles load correctly from the text files (Module 6 and 12).
+void testAllProfiles() {
+    cout << endl << "===== TEST 2: All 7 culprit profiles =====" << endl;
+    GameEngine& engine = GameEngine::getInstance();
 
-    // Servant profile: Word 1 = LOOTERS
-    Cottage cottage;
-    string names[7] = { "Bedroom_1", "Bedroom_2", "Study_Room", "Garden", "Kitchen", "Dining_Room", "Living_Room" };
-    char letters[7] = { 'L', 'O', 'O', 'T', 'E', 'R', 'S' };
-    for (int i = 0; i < 7; i++) {
-        Location loc = { names[i], letters[i], i + 1, WORD_1, false };
-        cottage.addLocation(loc);
-    }
-    cottage.displayLocations();
+    for (int k = 0; k < 7; k++) {
+        engine.startNewGame("Test_Detective", k);
 
-    Scrabble board;
-    board.setTargetWords("LOOTERS", "HERITAGE");
-    Detective detective("Agent_Halim");
-
-    // Search three locations; each letter goes to the rack and the board.
-    int visit[3] = { 2, 0, 5 };
-    for (int i = 0; i < 3; i++) {
-        Clue c = cottage.searchLocation(visit[i]);
-        detective.getRack(WORD_1).addTile(c.clueLetter, c.cluePosition);
-        board.placeLetter(c);
-    }
-    cout << endl << "After 3 searches:" << endl;
-    cottage.displayLocations();
-    cout << "Rack 1: ";
-    detective.getRack(WORD_1).display();
-    board.displayBoard();
-
-    // Complete Word 1 and check guesses.
-    for (int i = 0; i < 7; i++) {
-        if (!cottage.isSearched(i)) {
-            Clue c = cottage.searchLocation(i);
-            board.placeLetter(c);
+        // Collect every letter: 7 from the cottage and 8 from the people.
+        for (int i = 0; i < engine.getCottage().getLocationCount(); i++) {
+            engine.getBoard().placeLetter(engine.getCottage().searchLocation(i));
         }
-    }
-    cout << endl << "After all 7 searches:" << endl;
-    board.displayBoard();
-    cout << "Guess LOOTERS: " << (board.checkWord(WORD_1, "looters") ? "CORRECT" : "WRONG") << endl;
-    cout << "Guess RENOIRS: " << (board.checkWord(WORD_1, "RENOIRS") ? "CORRECT" : "WRONG") << endl;
+        for (int i = 0; i < engine.getPeopleCount(); i++) {
+            engine.getBoard().placeLetter(engine.getPerson(i)->getClue());
+        }
 
-    // Deep copy test: the copy must stay unchanged when the original changes.
-    Cottage copyCottage(cottage);
-    cottage.addLocation(Location());
-    cout << "Original locations: " << cottage.getLocationCount()
-        << " | Copy locations: " << copyCottage.getLocationCount() << endl;
+        string w1 = engine.getBoard().getWord(WORD_1);
+        string w2 = engine.getBoard().getWord(WORD_2);
+        bool correct = engine.getBoard().checkWord(WORD_1, w1) && engine.getBoard().checkWord(WORD_2, w2);
+
+        int culpritCount = 0;
+        for (int i = 0; i < engine.getPeopleCount(); i++) {
+            if (engine.getPerson(i)->getIsCulprit()) culpritCount++;
+        }
+        cout << "Culprit " << engine.getCulpritRole() << ": " << w1 << " + " << w2
+            << " | words " << (correct ? "OK" : "WRONG")
+            << " | culprits marked: " << culpritCount << endl;
+    }
 }
 
-// Test 3: every custom exception is thrown and caught (Module 7).
-void testExceptions() {
-    cout << endl << "===== TEST 3: Exceptions =====" << endl;
-    Scrabble board;
-    Clue good = { 'A', 3, WORD_1 };
-    board.placeLetter(good);
+// Test 3: operators and friend functions (Module 11).
+void testOperators() {
+    cout << endl << "===== TEST 3: Operators =====" << endl;
+    GameEngine& engine = GameEngine::getInstance();
+    engine.startNewGame("Agent_Halim", 2);
 
-    try { board.placeLetter(good); }
-    catch (GameException& e) { cout << e.what() << endl; }
+    Tile a = { 'A', true };
+    Tile b = { 'A', true };
+    Tile c = { 'B', true };
+    cout << "Tile " << a << " == Tile " << b << " : " << (a == b ? "true" : "false") << endl;
+    cout << "Tile " << a << " == Tile " << c << " : " << (a == c ? "true" : "false") << endl;
 
-    try { Clue bad = { 'B', 9, WORD_1 }; board.placeLetter(bad); }
-    catch (GameException& e) { cout << e.what() << endl; }
+    cout << *engine.getPerson(3) << endl;        // Character insertion operator
+    Location loc = { "Kitchen", 'E', 5, WORD_1, false };
+    cout << loc << endl;                         // Location insertion operator
 
-    try { board.checkWord(WORD_1, "LOOTERS"); }
-    catch (GameException& e) { cout << e.what() << endl; }
+    // Operator +: merge the two racks of the detective into one clue.
+    Detective& d = engine.getDetective();
+    d.getRack(WORD_1).addTile('L', 1);
+    d.getRack(WORD_1).addTile('O', 2);
+    d.getRack(WORD_2).addTile('H', 1);
+    d.getRack(WORD_2).addTile('E', 2);
+    TileRack merged = d.getRack(WORD_1) + d.getRack(WORD_2);
+    cout << "Merged clue letters: [" << merged.getLetters() << "]" << endl;
+    cout << "Merged rack: ";
+    merged.display();
 
-    TileRack rack(2);
+    engine.getBoard().placeLetter(engine.getCottage().searchLocation(0));
+    cout << "Board:" << endl << engine.getBoard();  // Scrabble insertion operator
+}
+
+// Test 4: score board and file exceptions (Module 6 and 7).
+void testScoreBoard() {
+    cout << endl << "===== TEST 4: Score board =====" << endl;
+    ScoreBoard real("leader/scoreBoard.txt");
+    real.displayAll();
+
+    // A separate test file is used, so the real score board stays clean.
+    ScoreBoard temp("testScores.txt");
+    temp.addScore("Test_Detective", "WIN", 70, 12, "Servant");
+    cout << endl << "Test file after addScore:" << endl;
+    temp.displayAll();
+
+    cout << endl;
     try {
-        rack.addTile('A', 1);
-        rack.addTile('B', 2);
-        rack.addTile('C', 3);
+        ScoreBoard missing("nofile.txt");
+        missing.displayAll();
     }
-    catch (GameException& e) { cout << e.what() << endl; }
-
-    TileRack emptyRack(2);
-    try { emptyRack.removeTile(0); }
     catch (GameException& e) { cout << e.what() << endl; }
 }
 
 int main() {
     try {
-        testCharacters();
-        testBoardAndRack();
-        testExceptions();
+        GameEngine& engine = GameEngine::getInstance();
+        ScoreBoard scoreBoard("leader/scoreBoard.txt");
+        engine.setScoreBoard(&scoreBoard);
+
+        testFilesAndRules();
+        testAllProfiles();
+        testOperators();
+        testScoreBoard();
     }
     catch (GameException& e) {
         cout << e.what() << endl;
     }
+    GameEngine::destroyInstance();
     return 0;
 }

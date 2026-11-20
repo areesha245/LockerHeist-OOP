@@ -1,6 +1,7 @@
 #ifndef HEIST_H
 #define HEIST_H
 
+#include <iostream>
 #include <string>
 using namespace std;
 
@@ -41,6 +42,18 @@ struct Location {
     WordRow locRow;
     bool locSearchFlag;   // true if already searched
 };
+
+// ---------- OPERATORS FOR STRUCTS (Module 11) ----------
+
+// Two tiles are equal when they hold the same letter (used to compare letters from clue.txt).
+bool operator==(const Tile& a, const Tile& b);
+bool operator!=(const Tile& a, const Tile& b);
+
+// Insertion (<<) prints an object; extraction (>>) reads one from the keyboard.
+ostream& operator<<(ostream& os, const Tile& t);
+istream& operator>>(istream& is, Tile& t);
+ostream& operator<<(ostream& os, const Location& loc);
+istream& operator>>(istream& is, Location& loc);
 
 // ---------- EXCEPTIONS (Module 7) ----------
 
@@ -223,6 +236,10 @@ public:
     bool isEmpty() const;
     bool isFull() const;
     void display() const;
+    string getLetters() const;                    // all letters as one string
+
+    // Merges two racks into one clue, with a space tile between them (Module 11).
+    TileRack operator+(const TileRack& other) const;
 };
 
 // ---------- SCRABBLE BOARD (Module 4) ----------
@@ -250,6 +267,10 @@ public:
     string getWord(WordRow row) const;
     bool checkWord(WordRow row, string guess) const;
     void displayBoard() const;
+
+    // Friend functions can reach the private rows of the board (Module 11).
+    friend ostream& operator<<(ostream& os, const Scrabble& board);
+    friend istream& operator>>(istream& is, Scrabble& board);
 };
 
 // ---------- COTTAGE (Module 4) ----------
@@ -274,7 +295,23 @@ public:
     void displayLocations() const;
 };
 
+// ---------- LEADER / SCORE BOARD (Module 6) ----------
+
+// Saves finished games to a text file and shows all earlier games.
+// Responsibility: read and write the score board file.
+class ScoreBoard {
+private:
+    string fileName;
+
+public:
+    ScoreBoard(string file = "leader/scoreBoard.txt");
+    void addScore(string detective, string result, int credibility, int turnsLeft, string culprit);
+    void displayAll() const;
+};
+
 // ---------- CHARACTER HIERARCHY ----------
+
+class GameEngine;   // forward declaration, needed for the friend declaration below
 
 // Abstract base class: holds data common to every person in the game.
 // It cannot be instantiated because display() is pure virtual.
@@ -291,12 +328,18 @@ public:
 
     virtual void display() const = 0;           // every derived class must override this
     virtual int getRequiredCredibility() const; // minimum credibility needed to interview
+    virtual Clue getClue() const;               // letter and position this person gives
 
     string getName() const;
     string getRole() const;
     string getNationality() const;
     bool getIsCulprit() const;
     void setIsCulprit(bool value);
+
+    // GameEngine is a friend class: it may read and change the private/protected data directly.
+    friend class GameEngine;
+    friend ostream& operator<<(ostream& os, const Character& c);
+    friend istream& operator>>(istream& is, Character& c);
 };
 
 // The victim (French business owner). Interviewed, but never a suspect.
@@ -401,4 +444,70 @@ public:
     void display() const;
 };
 
+// ---------- GAME ENGINE (Module 12) ----------
+
+// Singleton: only one GameEngine object can exist, and it runs the whole game.
+// Composition: it owns the Detective, Cottage, Scrabble board, clue rack and the characters.
+// Association: it only uses the ScoreBoard (it does not own it).
+class GameEngine {
+private:
+    static GameEngine* instance;     // the one and only object
+
+    // Rules (defaults are used when rules.txt is missing or corrupt)
+    int maxTurns;
+    int startCredibility;
+    int wrongTurnPenalty;
+    int wrongWordPenalty;
+    string winCondition;
+    string loseCondition;
+    bool rulesFromFile;
+
+    int culpritIndex;                // 0 to 6, position of the culprit profile
+    string culpritRole;
+
+    Detective* detective;            // composition (created for every new game)
+    Cottage cottage;                 // composition
+    Scrabble board;                  // composition
+    TileRack clueRack;               // composition (merged rack used as the final clue)
+    Character* people[8];            // victim + seven suspects
+    int peopleCount;
+    ScoreBoard* scoreBoard;          // association
+    GameState state;
+
+    // Constructor, copy constructor and assignment are private, so no second object can be made.
+    GameEngine();
+    GameEngine(const GameEngine&);
+    GameEngine& operator=(const GameEngine&);
+    ~GameEngine();
+
+    void clearGame();
+    void loadClues(string roles[], string words1[], string words2[]);
+    void loadLocations(int profile);
+    void loadCharacters(int profile);
+
+public:
+    static GameEngine& getInstance();
+    static void destroyInstance();
+
+    void setScoreBoard(ScoreBoard* board);
+    void loadRules();
+    void showRules() const;
+    void showAbout() const;
+    void startNewGame(string detectiveName, int forcedCulprit = -1);
+
+    Detective& getDetective();
+    Cottage& getCottage();
+    Scrabble& getBoard();
+    TileRack& getClueRack();
+    Character* getPerson(int index);
+    int getPeopleCount() const;
+    string getCulpritRole() const;
+    int getMaxTurns() const;
+    int getWrongTurnPenalty() const;
+    int getWrongWordPenalty() const;
+    GameState getState() const;
+    void setState(GameState newState);
+};
+
 #endif
+
