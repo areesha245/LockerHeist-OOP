@@ -473,6 +473,8 @@ private:
     int peopleCount;
     ScoreBoard* scoreBoard;          // association
     GameState state;
+    bool interviewed[8];             // which people the detective has already interviewed
+    bool wordSolved[2];              // which of the two words are already solved
 
     // Constructor, copy constructor and assignment are private, so no second object can be made.
     GameEngine();
@@ -485,6 +487,24 @@ private:
     void loadLocations(int profile);
     void loadCharacters(int profile);
 
+    // ----- User interface (Module 13) and completion conditions (Module 14) -----
+    int readChoice(int low, int high);
+    bool readYesNo();
+    string readLine();
+    void waitForEnter();
+    void clearScreen();
+    void mainMenuStep();
+    void setupNewGame();
+    void gameStep();
+    void showStatus() const;
+    void checkEndConditions();
+    void visitLocation();
+    void interviewPerson();
+    void formWord();
+    void revealCulprit();
+    void accuseSuspect();
+    void endGame();
+
 public:
     static GameEngine& getInstance();
     static void destroyInstance();
@@ -494,6 +514,7 @@ public:
     void showRules() const;
     void showAbout() const;
     void startNewGame(string detectiveName, int forcedCulprit = -1);
+    void run();   // runs menus and the game until the player exits
 
     Detective& getDetective();
     Cottage& getCottage();

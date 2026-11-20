@@ -585,7 +585,9 @@ GameEngine::GameEngine()
     rulesFromFile(false), culpritIndex(0), culpritRole(""),
     detective(0), clueRack(16), peopleCount(0), scoreBoard(0), state(MENU) {
     srand((unsigned)time(0));
-    for (int i = 0; i < 8; i++) people[i] = 0;
+    for (int i = 0; i < 8; i++) { people[i] = 0; interviewed[i] = false; }
+    wordSolved[0] = false;
+    wordSolved[1] = false;
 }
 
 // Private destructor: frees the detective and all characters.
@@ -781,6 +783,9 @@ void GameEngine::startNewGame(string detectiveName, int forcedCulprit) {
     board.setTargetWords(words1[culpritIndex], words2[culpritIndex]);
     clueRack = TileRack(16);
     detective = new Detective(detectiveName, "Malay", startCredibility);
+    for (int i = 0; i < 8; i++) interviewed[i] = false;
+    wordSolved[0] = false;
+    wordSolved[1] = false;
     state = PLAYING;
 }
 
@@ -796,3 +801,395 @@ int GameEngine::getWrongTurnPenalty() const { return wrongTurnPenalty; }
 int GameEngine::getWrongWordPenalty() const { return wrongWordPenalty; }
 GameState GameEngine::getState() const { return state; }
 void GameEngine::setState(GameState newState) { state = newState; }
+
+// ---------- User interface helpers ----------
+
+// Replaces every underscore with a space so "Bedroom_1" is shown as "Bedroom 1".
+static string prettyName(string text) {
+    for (int i = 0; i < (int)text.length(); i++) {
+        if (text[i] == '_') text[i] = ' ';
+    }
+    return text;
+}
+
+// Prints a title inside a box made of simple characters (works in every console).
+static void printHeader(string title) {
+    const int width = 54;
+    string line = "+";
+    for (int i = 0; i < width; i++) line += "=";
+    line += "+";
+    int left = (width - (int)title.length()) / 2;
+    if (left < 0) left = 0;
+    string middle = "|";
+    for (int i = 0; i < left; i++) middle += " ";
+    middle += title;
+    while ((int)middle.length() < width + 1) middle += " ";
+    middle += "|";
+    cout << line << endl << middle << endl << line << endl;
+}
+
+// Reads a whole line from the keyboard; if the input ends, the game is told to exit.
+string GameEngine::readLine() {
+    string line;
+    if (!getline(cin, line)) {
+        state = EXIT_GAME;
+        throw InvalidInputException();
+    }
+    return trimText(line);
+}
+
+// Reads a number between low and high; anything else throws InvalidInputException.
+int GameEngine::readChoice(int low, int high) {
+    string line = readLine();
+    if (line.empty() || line.length() > 3) throw InvalidInputException();
+    int value = 0;
+    for (int i = 0; i < (int)line.length(); i++) {
+        if (line[i] < '0' || line[i] > '9') throw InvalidInputException();
+        value = value * 10 + (line[i] - '0');
+    }
+    if (value < low || value > high) throw InvalidInputException();
+    return value;
+}
+
+// Reads Y or N; any other answer throws InvalidInputException.
+bool GameEngine::readYesNo() {
+    string line = readLine();
+    if (line == "Y" || line == "y") return true;
+    if (line == "N" || line == "n") return false;
+    throw InvalidInputException();
+}
+
+// Pauses until the player presses Enter, so messages are not cleared too early.
+void GameEngine::waitForEnter() {
+    cout << "Press Enter to continue...";
+    string line;
+    getline(cin, line);
+}
+
+// Clears the console screen (cls on Windows, clear on other systems).
+void GameEngine::clearScreen() {
+#ifdef _WIN32
+    system("cls");
+#else
+    system("clear");
+#endif
+}
+
+// ---------- Main menu (Module 13) ----------
+
+// Runs the game: the engine behaves according to its current state until the player exits.
+// Exceptions are not caught here; main() catches them and calls run() again to resume.
+void GameEngine::run() {
+    while (state != EXIT_GAME) {
+        if (state == MENU) mainMenuStep();
+        else if (state == PLAYING) gameStep();
+        else endGame();   // WON or LOST
+    }
+}
+
+// Shows the main menu once and performs the chosen action.
+void GameEngine::mainMenuStep() {
+    clearScreen();
+    printHeader("THE LOCKER HEIST - MAIN MENU");
+    cout << "   [1] New Game" << endl;
+    cout << "   [2] View Leader/Score Board" << endl;
+    cout << "   [3] About" << endl;
+    cout << "   [4] Rules" << endl;
+    cout << "   [5] Exit" << endl;
+    cout << "Choice: ";
+
+    MenuChoice choice = (MenuChoice)readChoice(1, 5);
+    cout << endl;
+
+    if (choice == NEW_GAME) {
+        setupNewGame();
+    }
+    else if (choice == LEADER_BOARD) {
+        if (scoreBoard == 0) throw FileException("leader/scoreBoard.txt");
+        printHeader("LEADER / SCORE BOARD");
+        scoreBoard->displayAll();
+        waitForEnter();
+    }
+    else if (choice == ABOUT) {
+        showAbout();
+        waitForEnter();
+    }
+    else if (choice == RULES) {
+        loadRules();
+        showRules();
+        waitForEnter();
+    }
+    else {
+        cout << "Goodbye, Detective!" << endl;
+        state = EXIT_GAME;
+    }
+}
+
+// Asks for the detective name, prepares a fresh game and shows the rules.
+void GameEngine::setupNewGame() {
+    printHeader("THE LOCKER HEIST - NEW GAME");
+    cout << "Enter detective name (no spaces): ";
+    string name = readLine();
+    if (name.empty()) throw InvalidInputException();
+
+    // A name with spaces is accepted if the player picks _ or . to replace them.
+    if (name.find(' ') != string::npos) {
+        cout << "Your name has spaces. Type _ or . to use instead of a space: ";
+        string symbol = readLine();
+        if (symbol != "_" && symbol != ".") throw InvalidInputException();
+        for (int i = 0; i < (int)name.length(); i++) {
+            if (name[i] == ' ') name[i] = symbol[0];
+        }
+    }
+
+    startNewGame(name);   // random culprit
+    cout << endl << "A culprit has been secretly chosen. The game begins!" << endl << endl;
+    showRules();
+    cout << endl;
+    waitForEnter();
+}
+
+// ---------- Game menu (Module 13) ----------
+
+// Prints credibility, turns, both racks and the Scrabble board.
+void GameEngine::showStatus() const {
+    cout << endl << "Detective: " << detective->getName()
+        << " | Credibility: " << detective->getCredibility()
+        << " | Turns used: " << detective->getTurns() << "/" << maxTurns << endl;
+    cout << "Rack (Word 1): ";
+    detective->getRack(WORD_1).display();
+    cout << "Rack (Word 2): ";
+    detective->getRack(WORD_2).display();
+    cout << "Scrabble:" << endl << board;
+}
+
+// Ends the game as a loss when credibility is zero or the turns are used up.
+void GameEngine::checkEndConditions() {
+    if (state != PLAYING) return;
+    if (detective->getCredibility() <= 0) {
+        cout << endl << "Your credibility has run out!" << endl;
+        state = LOST;
+    }
+    else if (detective->getTurns() >= maxTurns) {
+        cout << endl << "You have used all your turns!" << endl;
+        state = LOST;
+    }
+}
+
+// Shows the game menu once and performs the chosen action.
+void GameEngine::gameStep() {
+    checkEndConditions();
+    if (state != PLAYING) return;
+
+    showStatus();
+    cout << endl << "-------- Game Menu --------" << endl;
+    cout << "[1] Visit a Location" << endl;
+    cout << "[2] Interview a Person" << endl;
+    cout << "[3] View Scrabble Board (free - no turn)" << endl;
+    cout << "[4] Form a Word" << endl;
+    cout << "[5] Accuse a Suspect" << endl;
+    cout << "[6] Quit" << endl;
+    cout << endl << "--- TURN " << (detective->getTurns() + 1) << " ---" << endl;
+    cout << "Choice: ";
+
+    int choice = readChoice(1, 6);
+    cout << endl;
+
+    if (choice == 1) visitLocation();
+    else if (choice == 2) interviewPerson();
+    else if (choice == 3) {
+        cout << "Scrabble Board:" << endl << board;
+        cout << "Rack (Word 1): ";
+        detective->getRack(WORD_1).display();
+        cout << "Rack (Word 2): ";
+        detective->getRack(WORD_2).display();
+    }
+    else if (choice == 4) formWord();
+    else if (choice == 5) accuseSuspect();
+    else {
+        cout << "You left the investigation. This game is not saved on the score board." << endl;
+        state = MENU;
+        waitForEnter();
+    }
+}
+
+// ---------- Visiting locations ----------
+
+// Lets the player pick a location; a first visit gives a letter, a repeat visit costs a wrong turn.
+void GameEngine::visitLocation() {
+    cout << "====== Location Menu ======" << endl;
+    for (int i = 0; i < cottage.getLocationCount(); i++) {
+        cout << "[" << (i + 1) << "] " << prettyName(cottage.getLocationName(i)) << " - "
+            << (cottage.isSearched(i) ? "Searched" : "NOT Searched") << endl;
+    }
+    cout << "===========================" << endl;
+    cout << "Pick: ";
+    int index = readChoice(1, cottage.getLocationCount()) - 1;
+    string name = prettyName(cottage.getLocationName(index));
+
+    if (cottage.isSearched(index)) {
+        cout << "You have already searched " << name << ". Search again? (Y/N): ";
+        if (!readYesNo()) return;   // going back costs nothing
+        Clue c = cottage.searchLocation(index);
+        detective->useTurn();
+        detective->loseCredibility(wrongTurnPenalty);
+        cout << "Letter " << c.clueLetter << " is at position " << c.cluePosition << " of Word 1." << endl;
+        cout << "That was a wasted turn: -" << wrongTurnPenalty << " credibility." << endl;
+    }
+    else {
+        cout << "You have NOT searched " << name << " yet. Search? (Y/N): ";
+        if (!readYesNo()) return;
+        Clue c = cottage.searchLocation(index);
+        detective->getRack(WORD_1).addTile(c.clueLetter, c.cluePosition);
+        board.placeLetter(c);
+        detective->useTurn();
+        cout << "Letter " << c.clueLetter << " collected at position " << c.cluePosition << " of Word 1." << endl;
+        cout << "Letter has been placed." << endl;
+    }
+}
+
+// ---------- Interviewing people ----------
+
+// Lets the player interview someone; the credibility limit comes from the object itself (polymorphism).
+void GameEngine::interviewPerson() {
+    cout << "====== Character Menu ======" << endl;
+    for (int i = 0; i < peopleCount; i++) {
+        cout << "[" << (i + 1) << "] " << people[i]->getName() << " (" << prettyName(people[i]->getRole())
+            << ") - " << (interviewed[i] ? "Interviewed" : "NOT Interviewed") << endl;
+    }
+    cout << "============================" << endl;
+    cout << "Pick: ";
+    int index = readChoice(1, peopleCount) - 1;
+    Character* person = people[index];
+
+    // Too little credibility: the person refuses, the turn is wasted.
+    if (detective->getCredibility() < person->getRequiredCredibility()) {
+        int before = detective->getCredibility();
+        detective->useTurn();
+        detective->loseCredibility(wrongTurnPenalty);
+        cout << person->getName() << " refuses to talk. Needs credibility " << person->getRequiredCredibility()
+            << " (yours was " << before << ")." << endl;
+        cout << "That was a wasted turn: -" << wrongTurnPenalty << " credibility." << endl;
+        throw LowCredibilityException();
+    }
+
+    if (interviewed[index]) {
+        cout << "You have already interviewed " << person->getName() << ". Interview again? (Y/N): ";
+        if (!readYesNo()) return;
+        Clue c = person->getClue();
+        detective->useTurn();
+        detective->loseCredibility(wrongTurnPenalty);
+        cout << "Letter " << c.clueLetter << " is at position " << c.cluePosition << " of Word 2." << endl;
+        cout << "That was a wasted turn: -" << wrongTurnPenalty << " credibility." << endl;
+    }
+    else {
+        cout << "You have NOT interviewed " << person->getName() << " yet. Interview? (Y/N): ";
+        if (!readYesNo()) return;
+        Clue c = person->getClue();      // virtual call: Victim or Suspect gives its own letter
+        detective->getRack(WORD_2).addTile(c.clueLetter, c.cluePosition);
+        board.placeLetter(c);
+        interviewed[index] = true;
+        detective->useTurn();
+        cout << "Letter " << c.clueLetter << " collected at position " << c.cluePosition << " of Word 2." << endl;
+        cout << "Placed." << endl;
+    }
+}
+
+// ---------- Forming words (Module 14) ----------
+
+// The player types the word of a completed row; a wrong word costs credibility.
+void GameEngine::formWord() {
+    cout << "Which word do you want to form? [1] Word 1  [2] Word 2 : ";
+    int pick = readChoice(1, 2);
+    WordRow row = (pick == 1) ? WORD_1 : WORD_2;
+
+    if (wordSolved[pick - 1]) {
+        cout << "Word " << pick << " is already solved." << endl;
+        return;
+    }
+    if (!board.isRowComplete(row)) throw InvalidWordException("This row is not complete yet.");
+
+    cout << "Enter the word: ";
+    string guess = readLine();
+    if (guess.empty()) throw InvalidInputException();
+
+    bool correct = board.checkWord(row, guess);   // throws if the length is wrong
+    detective->useTurn();
+
+    if (correct) {
+        wordSolved[pick - 1] = true;
+        cout << "Correct! Word " << pick << " is solved." << endl;
+        if (wordSolved[0] && wordSolved[1]) revealCulprit();
+    }
+    else {
+        detective->loseCredibility(wrongWordPenalty);
+        cout << "Wrong word! -" << wrongWordPenalty << " credibility." << endl;
+    }
+}
+
+// Shows what both words point to once both are solved.
+void GameEngine::revealCulprit() {
+    // Operator +: the two racks are merged into one clue with a space between them.
+    clueRack = detective->getRack(WORD_1) + detective->getRack(WORD_2);
+
+    cout << endl << "Both words solved:" << endl;
+    cout << "  " << board.getWord(WORD_1) << " + " << board.getWord(WORD_2)
+        << " = " << prettyName(culpritRole) << " is the culprit!" << endl;
+    cout << "  Clue letters (merged racks): [" << clueRack.getLetters() << "]" << endl;
+    for (int i = 0; i < peopleCount; i++) {
+        if (people[i]->isCulprit) {
+            cout << "  Culprit: ";
+            people[i]->display();   // virtual call
+        }
+    }
+    cout << "  Now use [5] Accuse a Suspect to name the culprit." << endl;
+}
+
+// ---------- Accusing (Module 14) ----------
+
+// The player accuses one of the seven suspects; the right suspect wins the game.
+void GameEngine::accuseSuspect() {
+    cout << "====== Accuse a Suspect ======" << endl;
+    for (int i = 1; i < peopleCount; i++) {   // index 0 is the victim, who is not a suspect
+        cout << "[" << i << "] " << people[i]->getName() << " (" << prettyName(people[i]->getRole()) << ")" << endl;
+    }
+    cout << "==============================" << endl;
+    cout << "Accuse: ";
+    int index = readChoice(1, peopleCount - 1);
+    Character* suspect = people[index];
+
+    detective->useTurn();
+    if (suspect->isCulprit) {
+        cout << suspect->getName() << " is the culprit!" << endl;
+        state = WON;
+    }
+    else {
+        detective->loseCredibility(wrongTurnPenalty);
+        cout << suspect->getName() << " is NOT the culprit. -" << wrongTurnPenalty << " credibility." << endl;
+    }
+}
+
+// Shows the result, saves it to the score board and returns to the main menu.
+void GameEngine::endGame() {
+    bool won = (state == WON);
+    string culpritName = "";
+    for (int i = 0; i < peopleCount; i++) {
+        if (people[i]->isCulprit) culpritName = people[i]->getName();
+    }
+    int turnsLeft = maxTurns - detective->getTurns();
+    if (turnsLeft < 0) turnsLeft = 0;
+
+    cout << endl << "+======================================================+" << endl;
+    cout << "  " << detective->getName() << (won ? " WIN!" : " LOSE!") << endl;
+    cout << "  Final credibility: " << detective->getCredibility()
+        << " || Turns used: " << detective->getTurns()
+        << " || Culprit: " << prettyName(culpritRole) << " " << culpritName << endl;
+    cout << "+======================================================+" << endl;
+
+    state = MENU;   // set first, so the game can continue even if saving fails
+    if (scoreBoard == 0) throw FileException("leader/scoreBoard.txt");
+    scoreBoard->addScore(detective->getName(), won ? "WIN" : "LOSE",
+        detective->getCredibility(), turnsLeft, culpritRole);
+    cout << "Result saved on the leader board." << endl;
+    waitForEnter();
+}
