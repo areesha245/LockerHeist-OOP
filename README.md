@@ -8,8 +8,7 @@ Team Members
 Name	Roll Number
 Areesha Matloob	25F-3007
 Breera Mushtaq	25F-3025
-Group: G# (write your group number)
-Section: CS/SE - 3 - A/D (keep only your section)
+Section: BSE-3A
 Lab Instructor: Mr. Mozeb Ahmed Khan
 About the Game
 
