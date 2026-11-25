@@ -3,13 +3,14 @@
         A Detective Game backed by OOP Principles
 ==========================================================
 Developed By:
-  Areesha Matloob | 25F-3007
-  Breera Mushtaq | 25F-3025
+  [Student 1 Name] | [25F-XXXX]
+  [Student 2 Name] | [25F-XXXX]
 
 Course: CL1004 - Object Oriented Programming
 Section: CS/SE - 3 - A/D
 Semester: Fall 2026
-Lab Instructor: Mr.Mozeb Ahmed Khan
+Lab Instructor: [Instructor Name]
+
 -------------- ABOUT THE GAME --------------
 A wealthy business owner hosted a party at their cottage.
 During the party, a locker hidden behind a bookshelf in
